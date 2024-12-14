@@ -4,6 +4,7 @@ CMake modules for easy library building and integration, with cross-compilation 
 ## Currently Supported Libraries
 - [OpenSSL](openssl)
 - [MbedTLS](mbedtls)
+- [LibPCAP](libpcap)
 
 ## Features
 - Simplified library building and integration

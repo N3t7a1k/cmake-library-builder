@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 include(ExternalProject)
+include(ProcessorCount)
 
 option(USE_SHARED "Use shared libraries" OFF)
 option(USE_SYSTEM "Use libraries installed in system" OFF)
@@ -33,6 +34,16 @@ else()
   set(MBEDTLS_LIB_NAME "libmbedtls${STATIC_LIB_SUFFIX}")
   set(MBEDX509_LIB_NAME "libmbedx509${STATIC_LIB_SUFFIX}")
   set(MBEDCRYPTO_LIB_NAME "libmbedcrypto${STATIC_LIB_SUFFIX}")
+endif()
+
+ProcessorCount(NPROCS)
+if(NPROCS EQUAL 0)
+  set(NPROCS 1)
+endif()
+
+set(MAKE_PARALLEL "")
+if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Unix Makefiles")
+  set(MAKE_PARALLEL "-j${NPROCS}")
 endif()
 
 if(${USE_SYSTEM})
@@ -149,7 +160,7 @@ if(${USE_SYSTEM})
   else()
     message(FATAL_ERROR "System MbedTLS not found")
   endif()
-  elseif(DEFINED MBEDTLS_INCLUDE_DIR AND DEFINED MBEDTLS_LIB_DIR)
+elseif(DEFINED MBEDTLS_INCLUDE_DIR AND DEFINED MBEDTLS_LIB_DIR)
   get_filename_component(MBEDTLS_INCLUDE_DIR "${MBEDTLS_INCLUDE_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
   get_filename_component(MBEDTLS_LIB_DIR "${MBEDTLS_LIB_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
   message(STATUS "Using pre-built MbedTLS library in ${MBEDTLS_LIB_DIR}")
@@ -205,7 +216,7 @@ elseif(DEFINED MBEDTLS_DIR AND EXISTS ${MBEDTLS_DIR})
   set(MBEDTLS_LIB_DIR "${MBEDTLS_DIR}/lib")
   
   file(MAKE_DIRECTORY ${MBEDTLS_INCLUDE_DIR})
-  
+
   ExternalProject_Add(mbedtls_build
     SOURCE_DIR ${MBEDTLS_SOURCE_PATH}
     CMAKE_ARGS
@@ -214,6 +225,8 @@ elseif(DEFINED MBEDTLS_DIR AND EXISTS ${MBEDTLS_DIR})
       -DENABLE_TESTING=OFF
       -DENABLE_PROGRAMS=OFF
       ${MBEDTLS_CMAKE_EXTRA}
+    BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} ${MAKE_PARALLEL}
+    INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} ${MAKE_PARALLEL} install
     BUILD_BYPRODUCTS
       "${MBEDTLS_LIB_DIR}/${MBEDTLS_LIB_NAME}"
       "${MBEDTLS_LIB_DIR}/${MBEDX509_LIB_NAME}"
@@ -250,7 +263,7 @@ elseif(DEFINED MBEDTLS_DIR AND EXISTS ${MBEDTLS_DIR})
       IMPORTED_IMPLIB "${MBEDTLS_LIB_DIR}/${MBEDTLS_IMPORT_LIB_NAME}"
     )
     set_target_properties(MbedTLS::mbedx509 PROPERTIES
-      IMPORTED_IMPLIB "${MBEDTLS_LIB_DIR}/${MBEDX509_IMPORT_LIB_NAME}"
+      IMPORTED_IMPLIB "${MBEDX509_LIB_DIR}/${MBEDX509_IMPORT_LIB_NAME}"
     )
     set_target_properties(MbedTLS::mbedcrypto PROPERTIES
       IMPORTED_IMPLIB "${MBEDTLS_LIB_DIR}/${MBEDCRYPTO_IMPORT_LIB_NAME}"

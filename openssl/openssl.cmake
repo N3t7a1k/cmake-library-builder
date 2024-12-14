@@ -139,11 +139,6 @@ elseif(DEFINED OPENSSL_DIR AND EXISTS ${OPENSSL_DIR})
     list(APPEND BUILD_OPTIONS "no-tests")
   endif()
 
-  if(ANDROID)
-    set(ENV{ANDROID_NDK_ROOT} ${ANDROID_NDK})
-    list(APPEND BUILD_OPTIONS "-D__ANDROID_API__=${ANDROID_NATIVE_API_LEVEL}")
-  endif()
-
   ProcessorCount(NPROCS)
   if(NPROCS EQUAL 0)
     set(NPROCS 1)

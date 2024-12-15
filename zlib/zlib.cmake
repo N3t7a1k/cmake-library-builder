@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(Zlib)
+if(NOT CMAKE_PROJECT_NAME)
+  project(Zlib)
+endif()
 include(ExternalProject)
 include(ProcessorCount)
 

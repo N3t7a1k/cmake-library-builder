@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(OpenSSL)
+if(NOT CMAKE_PROJECT_NAME)
+  project(OpenSSL)
+endif()
 include(ProcessorCount)
 include(ExternalProject)
 

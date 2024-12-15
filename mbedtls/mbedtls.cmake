@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(MbedTLS)
+if(NOT CMAKE_PROJECT_NAME)
+  project(MbedTLS)
+endif()
 include(ExternalProject)
 include(ProcessorCount)
 

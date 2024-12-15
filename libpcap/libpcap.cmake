@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(LibPCAP)
+if(NOT CMAKE_PROJECT_NAME)
+  project(LibPCAP)
+endif()
 include(ExternalProject)
 include(ProcessorCount)
 

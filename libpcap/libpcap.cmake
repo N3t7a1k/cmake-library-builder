@@ -5,21 +5,8 @@ endif()
 include(ExternalProject)
 include(ProcessorCount)
 
-find_package(FLEX)
-if(NOT FLEX_FOUND)
-  find_program(FLEX_EXECUTABLE NAMES win_flex lex)
-  if(NOT FLEX_EXECUTABLE)
-    message(FATAL_ERROR "flex, win_flex, or lex is required to build libpcap. Please install flex package.")
-  endif()
-endif()
-
-find_package(BISON)
-if(NOT BISON_FOUND)
-  find_program(BISON_EXECUTABLE NAMES win_bison yacc)
-  if(NOT BISON_EXECUTABLE)
-    message(FATAL_ERROR "bison, win_bison, or yacc is required to build libpcap. Please install bison package.")
-  endif()
-endif()
+find_package(FLEX REQUIRED)
+find_package(BISON REQUIRED)
 
 option(USE_SHARED "Use shared libraries" OFF)
 option(USE_SYSTEM "Use libraries installed in system" OFF)
@@ -32,120 +19,142 @@ option(USE_RDMA "Enable RDMA support" OFF)
 
 add_library(libpcap INTERFACE)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  set(STATIC_LIB_SUFFIX ".lib")
-  set(SHARED_LIB_SUFFIX ".dll")
-  set(IMPORT_LIB_SUFFIX ".lib")
-  set(LIBPCAP_PREFIX "")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  set(STATIC_LIB_SUFFIX ".a")
+set(LIB_PREFIX "lib")
+set(STATIC_LIB_SUFFIX ".a")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set(SHARED_LIB_SUFFIX ".dylib")
-  set(IMPORT_LIB_SUFFIX "${SHARED_LIB_SUFFIX}")
-  set(LIBPCAP_PREFIX "lib")
 else()
-  set(STATIC_LIB_SUFFIX ".a")
   set(SHARED_LIB_SUFFIX ".so")
-  set(IMPORT_LIB_SUFFIX "${SHARED_LIB_SUFFIX}")
-  set(LIBPCAP_PREFIX "lib")
 endif()
 
 if(USE_SHARED)
-  set(LIBPCAP_NAME "${LIBPCAP_PREFIX}pcap${SHARED_LIB_SUFFIX}")
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(LIBPCAP_IMPORT_NAME "wpcap${IMPORT_LIB_SUFFIX}")
-  endif()
+  set(LIBPCAP_LIB_NAME "${LIB_PREFIX}pcap${SHARED_LIB_SUFFIX}")
 else()
-  set(LIBPCAP_NAME "${LIBPCAP_PREFIX}pcap${STATIC_LIB_SUFFIX}")
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(LIBPCAP_NAME "wpcap${STATIC_LIB_SUFFIX}")
-  endif()
+  set(LIBPCAP_LIB_NAME "${LIB_PREFIX}pcap${STATIC_LIB_SUFFIX}")
 endif()
 
-if(${USE_SYSTEM})
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    find_path(LIBPCAP_INCLUDE_DIR
-      NAMES pcap/pcap.h pcap.h
-      PATHS
-        "$ENV{PROGRAMFILES}/WpdPack/Include"
-        "$ENV{PROGRAMFILES\(X86\)}/WpdPack/Include"
-        "$ENV{ProgramW6432}/WpdPack/Include"
-    )
-    
-    find_library(LIBPCAP_LIBRARY
-      NAMES ${LIBPCAP_NAME} ${LIBPCAP_IMPORT_NAME}
-      PATHS
-        "$ENV{PROGRAMFILES}/WpdPack/Lib"
-        "$ENV{PROGRAMFILES\(X86\)}/WpdPack/Lib"
-        "$ENV{ProgramW6432}/WpdPack/Lib"
-        "$ENV{PROGRAMFILES}/WpdPack/Lib/x64"
-        "$ENV{PROGRAMFILES\(X86\)}/WpdPack/Lib/x64"
-        "$ENV{ProgramW6432}/WpdPack/Lib/x64"
+macro(find_libnl)
+  if(USE_SHARED)
+    set(LIBNL_LIB_NAME "${LIB_PREFIX}nl-3${SHARED_LIB_SUFFIX}")
+  else()
+    set(LIBNL_LIB_NAME "${LIB_PREFIX}nl-3${STATIC_LIB_SUFFIX}")
+  endif()
+
+  if(DEFINED LIBNL_INCLUDE_DIR AND DEFINED LIBNL_LIB_DIR)
+    get_filename_component(LIBNL_INCLUDE_DIR "${LIBNL_INCLUDE_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    get_filename_component(LIBNL_LIB_DIR "${LIBNL_LIB_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    set(LIBNL_LIBRARY "${LIBNL_LIB_DIR}/${LIBNL_LIB_NAME}")
+
+    add_library(LIBNL::LIBNL UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(LIBNL::LIBNL PROPERTIES
+      IMPORTED_LOCATION "${LIBNL_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${LIBNL_INCLUDE_DIR}"
     )
   else()
-    find_package(PkgConfig QUIET)
-    if(PKG_CONFIG_FOUND)
-      pkg_check_modules(PC_LIBPCAP QUIET libpcap)
+    if(CMAKE_CROSSCOMPILING)
+      message(FATAL_ERROR "Cross-compiling requires LIBNL_INCLUDE_DIR and LIBNL_LIB_DIR to be specified")
     endif()
 
-    find_path(LIBPCAP_INCLUDE_DIR
-      NAMES pcap/pcap.h pcap.h
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+      pkg_check_modules(PC_LIBNL QUIET libnl-3.0)
+    endif()
+
+    find_path(LIBNL_INCLUDE_DIR
+      NAMES netlink/netlink.h
       PATHS
-        ${PC_LIBPCAP_INCLUDEDIR}
-        /usr/local/include
-        /usr/include
+        ${PC_LIBNL_INCLUDEDIR}
+        /usr/local/include/libnl3
+        /usr/include/libnl3
     )
 
-    find_library(LIBPCAP_LIBRARY
-      NAMES ${LIBPCAP_NAME}
+    find_library(LIBNL_LIBRARY
+      NAMES ${LIBNL_LIB_NAME}
       PATHS
-        ${PC_LIBPCAP_LIBDIR}
+        ${PC_LIBNL_LIBDIR}
         /usr/local/lib
         /usr/lib
         /usr/lib64
     )
+
+    if(LIBNL_INCLUDE_DIR AND LIBNL_LIBRARY)
+      add_library(LIBNL::LIBNL UNKNOWN IMPORTED GLOBAL)
+      set_target_properties(LIBNL::LIBNL PROPERTIES
+        IMPORTED_LOCATION "${LIBNL_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${LIBNL_INCLUDE_DIR}"
+      )
+    else()
+      message(FATAL_ERROR "System LibNL not found. Please install libnl3-dev package or specify LIBNL_INCLUDE_DIR and LIBNL_LIB_DIR")
+    endif()
+  endif()
+endmacro()
+
+macro(setup_pcap_target)
+  if(NOT TARGET PCAP::PCAP)
+    add_library(PCAP::PCAP UNKNOWN IMPORTED GLOBAL)
   endif()
 
+  if(TARGET libpcap_build)
+    add_dependencies(PCAP::PCAP libpcap_build)
+  endif()
+  
+  set_target_properties(PCAP::PCAP PROPERTIES
+    IMPORTED_LOCATION "${LIBPCAP_LIB_DIR}/${LIBPCAP_LIB_NAME}"
+    INTERFACE_INCLUDE_DIRECTORIES "${LIBPCAP_INCLUDE_DIR}"
+  )
+
+  if(USE_LIBNL)
+    set_property(TARGET PCAP::PCAP APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES LIBNL::LIBNL)
+  endif()
+endmacro()
+
+if(UNIX AND NOT APPLE AND NOT DEFINED CMAKE_USE_LIBNL)
+  set(USE_LIBNL ON)
+endif()
+
+if(USE_LIBNL)
+  find_libnl()
+endif()
+
+if(USE_SYSTEM)
+  find_package(PkgConfig QUIET)
+  if(PKG_CONFIG_FOUND)
+    pkg_check_modules(PC_LIBPCAP QUIET libpcap)
+  endif()
+
+  find_path(LIBPCAP_INCLUDE_DIR
+    NAMES pcap/pcap.h pcap.h
+    PATHS
+      ${PC_LIBPCAP_INCLUDEDIR}
+      /usr/local/include
+      /usr/include
+  )
+
+  find_library(LIBPCAP_LIBRARY
+    NAMES ${LIBPCAP_LIB_NAME}
+    PATHS
+      ${PC_LIBPCAP_LIBDIR}
+      /usr/local/lib
+      /usr/lib
+      /usr/lib64
+  )
+
   if(LIBPCAP_INCLUDE_DIR AND LIBPCAP_LIBRARY)
-    message(STATUS "Found system libpcap:")
-    message(STATUS "  Include dir: ${LIBPCAP_INCLUDE_DIR}")
-    message(STATUS "  Library: ${LIBPCAP_LIBRARY}")
-
-    add_library(PCAP::pcap UNKNOWN IMPORTED GLOBAL)
-    set_target_properties(PCAP::pcap PROPERTIES
-      IMPORTED_LOCATION "${LIBPCAP_LIBRARY}"
-      INTERFACE_INCLUDE_DIRECTORIES "${LIBPCAP_INCLUDE_DIR}"
-    )
-
-    if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND USE_SHARED)
-      get_filename_component(LIBPCAP_LIB_DIR "${LIBPCAP_LIBRARY}" DIRECTORY)
-      set_target_properties(PCAP::pcap PROPERTIES
-        IMPORTED_IMPLIB "${LIBPCAP_LIBRARY}"
-        IMPORTED_LOCATION "${LIBPCAP_LIB_DIR}/${LIBPCAP_NAME}"
-      )
-    endif()
+    get_filename_component(LIBPCAP_LIB_DIR "${LIBPCAP_LIBRARY}" DIRECTORY)
+    setup_pcap_target()
   else()
     message(FATAL_ERROR "System libpcap not found")
   endif()
+
 elseif(DEFINED LIBPCAP_INCLUDE_DIR AND DEFINED LIBPCAP_LIB_DIR)
   get_filename_component(LIBPCAP_INCLUDE_DIR "${LIBPCAP_INCLUDE_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  get_filename_component(LIBPCAP_LIB_DIR "${LIBPCAP_LIB_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  message(STATUS "Using pre-built libpcap library in ${LIBPCAP_LIB_DIR}")
+  get_filename_component(LIBPCAP_LIB_DIR "${LIBNL_LIB_DIR}" ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
   
   include_directories(${LIBPCAP_INCLUDE_DIR})
   link_directories(${LIBPCAP_LIB_DIR})
-  
-  add_library(PCAP::pcap UNKNOWN IMPORTED GLOBAL)
-  
-  set_target_properties(PCAP::pcap PROPERTIES
-    IMPORTED_LOCATION "${LIBPCAP_LIB_DIR}/${LIBPCAP_NAME}"
-    INTERFACE_INCLUDE_DIRECTORIES "${LIBPCAP_INCLUDE_DIR}"
-  )
-  
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND USE_SHARED)
-    set_target_properties(PCAP::pcap PROPERTIES
-      IMPORTED_IMPLIB "${LIBPCAP_LIB_DIR}/${LIBPCAP_IMPORT_NAME}"
-    )
-  endif()
+  setup_pcap_target()
+
 elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
   set(OUTPUT_PATH "${CMAKE_BINARY_DIR}/out")
   set(SOURCE_PATH "${OUTPUT_PATH}/src")
@@ -159,13 +168,14 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
   
   file(GLOB LIBPCAP_EXTRACTED_DIRS "${SOURCE_PATH}/*")
   list(GET LIBPCAP_EXTRACTED_DIRS 0 LIBPCAP_SOURCE_PATH)
-  message(STATUS "libpcap source path: ${LIBPCAP_SOURCE_PATH}")
   
   set(LIBPCAP_DIR ${DESTINATION_PATH})
   set(LIBPCAP_INCLUDE_DIR "${LIBPCAP_DIR}/include")
   set(LIBPCAP_LIB_DIR "${LIBPCAP_DIR}/lib")
-  
   file(MAKE_DIRECTORY ${LIBPCAP_INCLUDE_DIR})
+
+  include_directories(${LIBPCAP_INCLUDE_DIR})
+  link_directories(${LIBPCAP_LIB_DIR})
 
   ProcessorCount(NPROCS)
   if(NPROCS EQUAL 0)
@@ -173,77 +183,51 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
   endif()
   set(MAKE_PARALLEL "-j${NPROCS}")
 
-  find_program(GNU_MAKE_COMMAND NAMES gmake make)
-  if(NOT GNU_MAKE_COMMAND)
-    message(FATAL_ERROR "GNU Make is required for building libpcap")
-  endif()
+  find_program(GNU_MAKE_COMMAND NAMES gmake make REQUIRED)
   set(MAKE_COMMAND ${GNU_MAKE_COMMAND})
 
-  if(UNIX AND NOT APPLE AND NOT DEFINED CMAKE_USE_LIBNL)
-    set(USE_LIBNL ON)
-  endif()
-
   if(EXISTS "${LIBPCAP_SOURCE_PATH}/CMakeLists.txt")
-    message(STATUS "Using CMake build for libpcap")
+    foreach(FEATURE IN ITEMS DBUS BLUETOOTH USB RDMA)
+      if(USE_${FEATURE})
+        set(DISABLE_${FEATURE} OFF)
+      else()
+        set(DISABLE_${FEATURE} ON)
+      endif()
+    endforeach()
 
-    if(USE_DBUS)
-      set(DISABLE_DBUS OFF)
-    else()
-      set(DISABLE_DBUS ON)
-    endif()
-    
-    if(USE_BLUETOOTH)
-      set(DISABLE_BLUETOOTH OFF)
-    else()
-      set(DISABLE_BLUETOOTH ON)
-    endif()
-    
-    if(USE_USB)
-      set(DISABLE_USB OFF)
-    else()
-      set(DISABLE_USB ON)
-    endif()
-
-    if(USE_RDMA)
-      set(DISABLE_RDMA OFF)
-    else()
-      set(DISABLE_RDMA ON)
-    endif()
+    set(LIBPCAP_CMAKE_ARGS
+      -DCMAKE_INSTALL_PREFIX:PATH=${DESTINATION_PATH}
+      -DCMAKE_BUILD_TYPE:STRING=Release
+      -DBUILD_SHARED_LIBS:BOOL=${USE_SHARED}
+      -DDISABLE_DBUS:BOOL=${DISABLE_DBUS}
+      -DDISABLE_BLUETOOTH:BOOL=${DISABLE_BLUETOOTH}
+      -DDISABLE_USB:BOOL=${DISABLE_USB}
+      -DDISABLE_RDMA:BOOL=${DISABLE_RDMA}
+    )
 
     if(USE_LIBNL)
-      set(LIBNL_ARG "-DBUILD_WITH_LIBNL=ON")
+      list(APPEND LIBPCAP_CMAKE_ARGS
+        -DBUILD_WITH_LIBNL=ON
+        -DLIBNL_INCLUDE_DIR=${LIBNL_INCLUDE_DIR}
+        -DLIBNL_LIBRARY=${LIBNL_LIBRARY}
+      )
     else()
-      set(LIBNL_ARG "-DBUILD_WITH_LIBNL=OFF")
+      list(APPEND LIBPCAP_CMAKE_ARGS -DBUILD_WITH_LIBNL=OFF)
     endif()
 
     ExternalProject_Add(libpcap_build
       SOURCE_DIR ${LIBPCAP_SOURCE_PATH}
       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libpcap-build
-      CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${DESTINATION_PATH}
-        -DCMAKE_BUILD_TYPE:STRING=Release
-        -DBUILD_SHARED_LIBS:BOOL=${USE_SHARED}
-        -DDISABLE_DBUS:BOOL=${DISABLE_DBUS}
-        -DDISABLE_BLUETOOTH:BOOL=${DISABLE_BLUETOOTH}
-        -DDISABLE_USB:BOOL=${DISABLE_USB}
-        -DDISABLE_RDMA:BOOL=${DISABLE_RDMA}
-        ${LIBNL_ARG}
-        ${LIBPCAP_CMAKE_EXTRA}
+      CMAKE_ARGS ${LIBPCAP_CMAKE_ARGS}
       BUILD_COMMAND ${CMAKE_COMMAND} --build .
       INSTALL_COMMAND ${CMAKE_COMMAND} --install .
-      BUILD_BYPRODUCTS
-        "${LIBPCAP_LIB_DIR}/${LIBPCAP_NAME}"
+      BUILD_BYPRODUCTS "${LIBPCAP_LIB_DIR}/${LIBPCAP_LIB_NAME}"
       LOG_CONFIGURE TRUE
       LOG_BUILD TRUE
       LOG_INSTALL TRUE
     )
   else()
-    message(STATUS "Using autotools build for libpcap")
-    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-      message(FATAL_ERROR "Autotools build is not supported on Windows")
-    endif()
-    
-    set(CONFIGURE_OPTIONS "")
+    set(CONFIGURE_OPTIONS)
     if(NOT USE_DBUS)
       list(APPEND CONFIGURE_OPTIONS "--disable-dbus")
     endif()
@@ -253,7 +237,12 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
     if(NOT USE_USB)
       list(APPEND CONFIGURE_OPTIONS "--disable-usb")
     endif()
-    if(NOT USE_LIBNL)
+    if(USE_LIBNL)
+      list(APPEND CONFIGURE_OPTIONS
+        "CPPFLAGS=-I${LIBNL_INCLUDE_DIR}"
+        "LDFLAGS=-L${LIBNL_LIB_DIR} -lnl-3"
+      )
+    else()
       list(APPEND CONFIGURE_OPTIONS "--disable-libnl")
     endif()
     
@@ -268,35 +257,16 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
         $<IF:$<BOOL:${USE_SHARED}>,--enable-shared,--disable-shared>
         ${LIBPCAP_CONFIGURE_EXTRA}
       BUILD_COMMAND ${MAKE_COMMAND} ${MAKE_PARALLEL}
-      INSTALL_COMMAND ${MAKE_COMMAND} ${MAKE_PARALLEL} install
-      BUILD_BYPRODUCTS
-        "${LIBPCAP_LIB_DIR}/${LIBPCAP_NAME}"
+      INSTALL_COMMAND ${MAKE_COMMAND} install
+      BUILD_BYPRODUCTS "${LIBPCAP_LIB_DIR}/${LIBPCAP_LIB_NAME}"
       LOG_CONFIGURE TRUE
       LOG_BUILD TRUE
       LOG_INSTALL TRUE
     )
   endif()
-  
-  add_dependencies(libpcap libpcap_build)
-  
-  include_directories(${LIBPCAP_INCLUDE_DIR})
-  link_directories(${LIBPCAP_LIB_DIR})
-  
-  add_library(PCAP::pcap UNKNOWN IMPORTED GLOBAL)
-  
-  set_target_properties(PCAP::pcap PROPERTIES
-    IMPORTED_LOCATION "${LIBPCAP_LIB_DIR}/${LIBPCAP_NAME}"
-    INTERFACE_INCLUDE_DIRECTORIES "${LIBPCAP_INCLUDE_DIR}"
-  )
-  
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND USE_SHARED)
-    set_target_properties(PCAP::pcap PROPERTIES
-      IMPORTED_IMPLIB "${LIBPCAP_LIB_DIR}/${LIBPCAP_IMPORT_NAME}"
-    )
-  endif()
+
+  setup_pcap_target()
+  add_dependencies(libpcap PCAP::PCAP)
 else()
   message(FATAL_ERROR "Failed to build/load libpcap")
 endif()
-
-message(STATUS "Include directory: ${LIBPCAP_INCLUDE_DIR}")
-message(STATUS "Library directory: ${LIBPCAP_LIB_DIR}")

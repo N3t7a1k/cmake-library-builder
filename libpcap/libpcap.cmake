@@ -24,7 +24,7 @@ endif()
 option(USE_SHARED "Use shared libraries" OFF)
 option(USE_SYSTEM "Use libraries installed in system" OFF)
 
-option(USE_LIBNL "Enable libnl support" ON)
+option(USE_LIBNL "Enable libnl support" OFF)
 option(USE_DBUS "Enable DBUS support" OFF)
 option(USE_BLUETOOTH "Enable Bluetooth support" OFF)
 option(USE_USB "Enable USB support" OFF)
@@ -167,11 +167,6 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
   
   file(MAKE_DIRECTORY ${LIBPCAP_INCLUDE_DIR})
 
-  if(ANDROID)
-    set(ENV{ANDROID_NDK_ROOT} ${ANDROID_NDK})
-    list(APPEND BUILD_OPTIONS "-D__ANDROID_API__=${ANDROID_NATIVE_API_LEVEL}")
-  endif()
-
   ProcessorCount(NPROCS)
   if(NPROCS EQUAL 0)
     set(NPROCS 1)
@@ -183,6 +178,10 @@ elseif(DEFINED LIBPCAP_DIR AND EXISTS ${LIBPCAP_DIR})
     message(FATAL_ERROR "GNU Make is required for building libpcap")
   endif()
   set(MAKE_COMMAND ${GNU_MAKE_COMMAND})
+
+  if(UNIX AND NOT APPLE AND NOT DEFINED CMAKE_USE_LIBNL)
+    set(USE_LIBNL ON)
+  endif()
 
   if(EXISTS "${LIBPCAP_SOURCE_PATH}/CMakeLists.txt")
     message(STATUS "Using CMake build for libpcap")

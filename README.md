@@ -8,6 +8,7 @@ CMake modules for easy library building and integration, with cross-compilation 
 - [Zlib](zlib)
 - [LibZip](libzip)
 - [LibNL](libnl)
+- [LibSodium](libsodium)
 
 ## Features
 - Simplified library building and integration

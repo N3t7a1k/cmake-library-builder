@@ -7,6 +7,7 @@ CMake modules for easy library building and integration, with cross-compilation 
 - [LibPCAP](libpcap)
 - [Zlib](zlib)
 - [LibZip](libzip)
+- [LibNL](libnl)
 
 ## Features
 - Simplified library building and integration
